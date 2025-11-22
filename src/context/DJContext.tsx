@@ -1,3 +1,10 @@
+import {
+  getSpotifyAuthUrl,
+  readTokenFromUrlHash,
+  getStoredToken,
+  fetchUserTopTracksWithFeatures
+} from '../services/spotify';
+
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 export interface Track {
