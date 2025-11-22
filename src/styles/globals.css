@@ -1,0 +1,113 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #121214;
+  --foreground: #ffffff;
+  --card: #1e1e24;
+  --card-foreground: #ffffff;
+  --popover: #1e1e24;
+  --popover-foreground: #ffffff;
+  --primary: #00e1ff;
+  --primary-foreground: #000000;
+  --secondary: #ff0055;
+  --secondary-foreground: #ffffff;
+  --muted: #2a2a35;
+  --muted-foreground: #888899;
+  --accent: #2a2a35;
+  --accent-foreground: #ffffff;
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: #333340;
+  --input: #2a2a35;
+  --input-background: #2a2a35;
+  --switch-background: #444455;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #00e1ff;
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Custom DJ Animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+.vinyl-groove {
+  background: repeating-radial-gradient(
+    #111 0,
+    #111 2px,
+    #222 3px,
+    #222 4px
+  );
+}
+
+/* Glow effects */
+.glow-text-primary {
+  text-shadow: 0 0 10px var(--primary);
+}
+.glow-text-secondary {
+  text-shadow: 0 0 10px var(--secondary);
+}
+.glow-box-primary {
+  box-shadow: 0 0 15px -3px var(--primary);
+}
+.glow-box-secondary {
+  box-shadow: 0 0 15px -3px var(--secondary);
+}
+
+/* Custom Range Input Styling for Faders */
+input[type=range][orient=vertical] {
+    writing-mode: bt-lr; /* IE */
+    -webkit-appearance: slider-vertical; /* WebKit */
+    width: 8px;
+    height: 100%;
+    padding: 0 5px;
+}
