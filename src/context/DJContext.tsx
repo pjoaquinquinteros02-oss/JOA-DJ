@@ -1,28 +1,34 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from 'react';
 import {
   getSpotifyAuthUrl,
   readTokenFromUrlHash,
   getStoredToken,
-  fetchUserTopTracksWithFeatures
+  fetchUserTopTracksWithFeatures,
 } from '../services/spotify';
-
-import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 export interface Track {
   id: string;
   title: string;
   artist: string;
   cover: string;
-  duration: number;
+  duration: number; // segundos
   bpm: number;
   key: string;
-  url: string; // In a real app, this is the audio source
+  url: string; // audio source (Spotify preview o archivo local)
 }
 
 export interface DeckState {
   track: Track | null;
   playing: boolean;
-  volume: number;
-  pitch: number; // 0 is normal, range -10 to +10 % typically, or playbackRate
+  volume: number; // 0 - 100
+  pitch: number; // -100 a 100 (%)
   eq: {
     high: number;
     mid: number;
@@ -32,17 +38,16 @@ export interface DeckState {
   cuePoints: number[];
   loopIn: number | null;
   loopOut: number | null;
-  currentTime: number;
+  currentTime: number; // segundos
 }
 
 interface DJContextType {
   deckA: DeckState;
   deckB: DeckState;
-  crossfader: number; // 0 (A) to 100 (B)
+  crossfader: number; // 0 (A) a 100 (B)
   activeDeck: 'A' | 'B' | null;
   library: Track[];
-  
-  // Actions
+
   loadTrack: (deck: 'A' | 'B', track: Track) => void;
   togglePlay: (deck: 'A' | 'B') => void;
   setVolume: (deck: 'A' | 'B', val: number) => void;
@@ -51,6 +56,7 @@ interface DJContextType {
   setGain: (deck: 'A' | 'B', val: number) => void;
   setCrossfader: (val: number) => void;
   updateTime: (deck: 'A' | 'B', time: number) => void;
+
   connectSpotify: () => void;
   isSpotifyConnected: boolean;
 }
@@ -70,13 +76,28 @@ const defaultDeckState: DeckState = {
 
 const DJContext = createContext<DJContextType | undefined>(undefined);
 
-// Mock Tracks
+// Librería mock de backup (por si no hay Spotify o para demos offline)
 const MOCK_LIBRARY: Track[] = [
-  { id: '1', title: 'Midnight City', artist: 'M83', cover: 'https://images.unsplash.com/photo-1703115015343-81b498a8c080?w=300', duration: 243, bpm: 105, key: 'Bm', url: '/demo1.mp3' },
-  { id: '2', title: 'One More Time', artist: 'Daft Punk', cover: 'https://images.unsplash.com/photo-1762352939776-da05be5784e5?w=300', duration: 320, bpm: 123, key: 'D', url: '/demo2.mp3' },
-  { id: '3', title: 'Levels', artist: 'Avicii', cover: 'https://images.unsplash.com/photo-1631016558939-299d332fa5fe?w=300', duration: 198, bpm: 126, key: 'C#m', url: '/demo3.mp3' },
-  { id: '4', title: 'Strobe', artist: 'Deadmau5', cover: 'https://images.unsplash.com/photo-1735896832573-9d62e11b2ba6?w=300', duration: 636, bpm: 128, key: 'Gm', url: '/demo4.mp3' },
-  { id: '5', title: 'Titanium', artist: 'David Guetta', cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300', duration: 245, bpm: 126, key: 'Eb', url: '/demo5.mp3' },
+  {
+    id: 'demo-1',
+    title: 'Midnight City',
+    artist: 'M83',
+    cover: 'https://images.pexels.com/photos/167404/pexels-photo-167404.jpeg',
+    duration: 243,
+    bpm: 105,
+    key: 'Bm',
+    url: '/demo1.mp3',
+  },
+  {
+    id: 'demo-2',
+    title: 'One More Time',
+    artist: 'Daft Punk',
+    cover: 'https://images.pexels.com/photos/164745/pexels-photo-164745.jpeg',
+    duration: 320,
+    bpm: 123,
+    key: 'D',
+    url: '/demo2.mp3',
+  },
 ];
 
 export const DJProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -85,60 +106,145 @@ export const DJProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [crossfader, setCrossfader] = useState(50);
   const [activeDeck, setActiveDeck] = useState<'A' | 'B' | null>(null);
   const [library, setLibrary] = useState<Track[]>([]);
+  const [spotifyToken, setSpotifyToken] = useState<string | null>(null);
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
 
-  const connectSpotify = () => {
-    // Simulate API delay
-    setTimeout(() => {
+  // Al montar: leer token de la URL (callback de Spotify) o de localStorage
+  useEffect(() => {
+    const fromHash = readTokenFromUrlHash();
+    if (fromHash) {
+      setSpotifyToken(fromHash);
       setIsSpotifyConnected(true);
-      setLibrary(MOCK_LIBRARY);
-    }, 1500);
+      return;
+    }
+
+    const stored = getStoredToken();
+    if (stored) {
+      setSpotifyToken(stored);
+      setIsSpotifyConnected(true);
+      return;
+    }
+
+    // Si no hay Spotify, usamos librería mock para que el UI no esté vacío
+    setLibrary(MOCK_LIBRARY);
+  }, []);
+
+  const loadSpotifyLibrary = useCallback(
+    async (token: string) => {
+      try {
+        const data = await fetchUserTopTracksWithFeatures(token);
+        const mapped: Track[] = data
+          .filter((item: any) => item.track.preview_url)
+          .map((item: any) => ({
+            id: item.track.id,
+            title: item.track.name,
+            artist: item.track.artists.map((a: any) => a.name).join(', '),
+            cover: item.track.album.images?.[0]?.url || '',
+            duration: Math.round(item.track.duration_ms / 1000),
+            bpm: item.features?.tempo ?? 120,
+            key: item.features?.keyName ?? 'N/A',
+            url: item.track.preview_url!,
+          }));
+
+        if (mapped.length > 0) {
+          setLibrary(mapped);
+        } else {
+          // fallback a mock si el usuario no tiene previews disponibles
+          setLibrary(MOCK_LIBRARY);
+        }
+      } catch (error) {
+        console.error('Error loading Spotify library', error);
+        setLibrary(MOCK_LIBRARY);
+      }
+    },
+    []
+  );
+
+  // Cada vez que tengamos un token, cargamos la librería desde Spotify
+  useEffect(() => {
+    if (!spotifyToken) return;
+    loadSpotifyLibrary(spotifyToken);
+  }, [spotifyToken, loadSpotifyLibrary]);
+
+  const connectSpotify = () => {
+    const stored = getStoredToken();
+    if (stored) {
+      setSpotifyToken(stored);
+      setIsSpotifyConnected(true);
+      return;
+    }
+
+    const url = getSpotifyAuthUrl();
+    window.location.href = url;
   };
 
   const loadTrack = (deck: 'A' | 'B', track: Track) => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, track, playing: false, currentTime: 0 }));
+    setActiveDeck(deck);
+    setState((prev) => ({
+      ...prev,
+      track,
+      playing: false,
+      currentTime: 0,
+    }));
   };
 
   const togglePlay = (deck: 'A' | 'B') => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, playing: !prev.playing }));
+    setActiveDeck(deck);
+    setState((prev) => ({ ...prev, playing: !prev.playing }));
   };
 
   const setVolume = (deck: 'A' | 'B', val: number) => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, volume: val }));
+    setState((prev) => ({ ...prev, volume: val }));
   };
 
   const setPitch = (deck: 'A' | 'B', val: number) => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, pitch: val }));
+    setState((prev) => ({ ...prev, pitch: val }));
   };
 
   const setEq = (deck: 'A' | 'B', band: 'high' | 'mid' | 'low', val: number) => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, eq: { ...prev.eq, [band]: val } }));
+    setState((prev) => ({
+      ...prev,
+      eq: {
+        ...prev.eq,
+        [band]: val,
+      },
+    }));
   };
 
   const setGain = (deck: 'A' | 'B', val: number) => {
     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, gain: val }));
+    setState((prev) => ({ ...prev, gain: val }));
   };
 
   const updateTime = (deck: 'A' | 'B', time: number) => {
-     const setState = deck === 'A' ? setDeckA : setDeckB;
-    setState(prev => ({ ...prev, currentTime: time }));
-  }
+    const setState = deck === 'A' ? setDeckA : setDeckB;
+    setState((prev) => ({ ...prev, currentTime: time }));
+  };
 
-  return (
-    <DJContext.Provider value={{
-      deckA, deckB, crossfader, activeDeck, library,
-      loadTrack, togglePlay, setVolume, setPitch, setEq, setGain, setCrossfader, updateTime,
-      connectSpotify, isSpotifyConnected
-    }}>
-      {children}
-    </DJContext.Provider>
-  );
+  const value: DJContextType = {
+    deckA,
+    deckB,
+    crossfader,
+    activeDeck,
+    library,
+    loadTrack,
+    togglePlay,
+    setVolume,
+    setPitch,
+    setEq,
+    setGain,
+    setCrossfader,
+    updateTime,
+    connectSpotify,
+    isSpotifyConnected,
+  };
+
+  return <DJContext.Provider value={value}>{children}</DJContext.Provider>;
 };
 
 export const useDJ = () => {
