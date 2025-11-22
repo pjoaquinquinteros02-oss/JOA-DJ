@@ -24,20 +24,22 @@ export function getSpotifyAuthUrl() {
   return `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
 
+// Lee el access_token del hash de la URL luego del login
 export function readTokenFromUrlHash(): string | null {
   if (!window.location.hash.startsWith('#')) return null;
-  const hash = new URLSearchParams(window.location.hash.substring(1));
 
+  const hash = new URLSearchParams(window.location.hash.substring(1));
   const accessToken = hash.get('access_token');
   const expiresIn = hash.get('expires_in');
 
   if (accessToken) {
     const expiresAt =
-      Date.now() + Number(expiresIn || '3600') * 1000;
+      Date.now() + Number(expiresIn || '3600') * 1000; // default 1h
 
     window.localStorage.setItem(TOKEN_KEY, accessToken);
     window.localStorage.setItem(TOKEN_EXP_KEY, String(expiresAt));
 
+    // Limpia el hash para no dejar el token visible
     window.location.hash = '';
     return accessToken;
   }
@@ -58,6 +60,7 @@ export function getStoredToken(): string | null {
   return token;
 }
 
+// Tipos mínimos que necesitamos del API de Spotify
 export interface SpotifyApiTrack {
   id: string;
   name: string;
@@ -74,7 +77,7 @@ export interface SpotifyAudioFeatures {
   mode: number | null;
 }
 
-const KEY_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const KEY_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 
 function keyToName(key: number | null, mode: number | null): string {
   if (key == null || key < 0 || key > 11) return 'N/A';
@@ -84,17 +87,31 @@ function keyToName(key: number | null, mode: number | null): string {
   return base;
 }
 
-export async function fetchUserTopTracksWithFeatures(token: string) {
+// Devuelve tus top tracks + audio features (BPM, key, etc.)
+export async function fetchUserTopTracksWithFeatures(
+  token: string
+): Promise<
+  Array<{
+    track: SpotifyApiTrack;
+    features?: SpotifyAudioFeatures & { keyName: string };
+  }>
+> {
   const headers = { Authorization: `Bearer ${token}` };
 
-  const res = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', { headers });
-  if (!res.ok) throw new Error('Error fetching top tracks');
+  // 1) Top tracks del usuario
+  const res = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+    headers,
+  });
+  if (!res.ok) throw new Error('Error fetching top tracks from Spotify');
 
   const json = await res.json();
   const items: SpotifyApiTrack[] = json.items || [];
-  const ids = items.map(t => t.id).join(',');
+  const ids = items.map((t) => t.id).join(',');
 
-  let featuresById: Record<string, any> = {};
+  let featuresById: Record<
+    string,
+    SpotifyAudioFeatures & { keyName: string }
+  > = {};
 
   if (ids) {
     const res2 = await fetch(
@@ -106,15 +123,13 @@ export async function fetchUserTopTracksWithFeatures(token: string) {
       const json2 = await res2.json();
       for (const f of json2.audio_features || []) {
         if (!f) continue;
-        featuresById[f.id] = {
-          ...f,
-          keyName: keyToName(f.key, f.mode),
-        };
+        const keyName = keyToName(f.key, f.mode);
+        featuresById[f.id] = { ...f, keyName };
       }
     }
   }
 
-  return items.map(track => ({
+  return items.map((track) => ({
     track,
     features: featuresById[track.id],
   }));
